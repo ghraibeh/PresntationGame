@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Host — Rule · Skill · Agent</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;600;700&family=Titan+One&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="host-main">
+      <header class="game-header">
+        <h1>HOST CONTROL</h1>
+        <p class="game-tagline">Run the show</p>
+      </header>
+      <p class="sub">Players open the link below or <strong>scan the QR</strong> with their phone camera — you run the game from here.</p>
+
+      <div id="error" class="error-toast hidden"></div>
+
+      <section class="panel panel-glow qr-panel" id="qr-section" aria-label="Player join QR code">
+        <p class="results-title" style="margin-bottom: 0.35rem">Player join QR</p>
+        <p class="timer-hint" style="text-align: center; margin-bottom: 0.65rem">
+          Show this on a projector; players scan with the <strong>camera app</strong> (no extra app needed).
+        </p>
+        <p class="deploy-banner">
+          Deploy on <strong>Render</strong> or <strong>Railway</strong> for a free public <code>https://</code> link — see
+          <code>DEPLOY.md</code> in the project. The QR always matches this page’s address.
+        </p>
+        <div class="qr-wrap">
+          <canvas id="qr-canvas" width="220" height="220" aria-hidden="true"></canvas>
+          <div class="qr-side">
+            <p class="qr-url" id="qr-url-text"></p>
+            <button type="button" class="btn-ghost" id="btn-copy-url">Copy player link</button>
+          </div>
+        </div>
+      </section>
+
+      <div class="host-bar panel panel-glow" style="padding: 1rem 1.25rem; flex-direction: column; align-items: stretch">
+        <div style="display: flex; flex-wrap: wrap; gap: 0.65rem; align-items: center">
+          <button type="button" id="btn-next">Start / Next round</button>
+          <button type="button" class="secondary" id="btn-reset">Reset lobby</button>
+          <span class="roster" id="host-status"></span>
+        </div>
+        <div class="host-timer-row">
+          <label for="host-seconds">Seconds per round</label>
+          <input type="number" id="host-seconds" min="5" max="120" value="10" step="1" />
+          <span class="timer-hint">Applies to the next question (5–120).</span>
+        </div>
+      </div>
+
+      <section id="host-wait" class="panel">
+        <p class="waiting" style="padding: 1rem 0">Lobby open! When players are ready, hit <strong>Start / Next round</strong> for question 1.</p>
+        <p class="roster" id="host-roster"></p>
+      </section>
+
+      <section id="host-question" class="panel panel-glow hidden">
+        <p class="question-meta">Round <span id="hq-num"></span> of <span id="hq-total"></span></p>
+        <p class="prompt" id="hq-prompt"></p>
+        <div class="timer-wrap">
+          <div class="timer-label">Time left</div>
+          <div class="timer" id="hq-timer">10.0</div>
+        </div>
+        <p class="roster" style="text-align: center">Players are tapping answers on their phones!</p>
+      </section>
+
+      <section id="host-reveal" class="panel hidden">
+        <div class="correct-banner" id="hreveal-correct"></div>
+        <p class="results-title">Round results</p>
+        <ul class="results" id="hreveal-results"></ul>
+        <p class="sub">Hit <strong>Start / Next round</strong> when you’re ready for the next one.</p>
+      </section>
+
+      <section id="host-ended" class="panel hidden">
+        <p class="waiting">That’s every question! <strong>Start / Next round</strong> kicks off a fresh run from Q1.</p>
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+    <script>
+      const $ = (id) => document.getElementById(id);
+      let ws;
+      let timerId = null;
+      let totalQ = 0;
+
+      const views = {
+        wait: $("host-wait"),
+        question: $("host-question"),
+        reveal: $("host-reveal"),
+        ended: $("host-ended"),
+      };
+
+      function show(view) {
+        Object.values(views).forEach((el) => el.classList.add("hidden"));
+        views[view].classList.remove("hidden");
+      }
+
+      function showError(msg) {
+        const el = $("error");
+        el.textContent = msg;
+        el.classList.remove("hidden");
+        setTimeout(() => el.classList.add("hidden"), 6000);
+      }
+
+      function connect() {
+        const proto = location.protocol === "https:" ? "wss" : "ws";
+        ws = new WebSocket(`${proto}://${location.host}`);
+
+        ws.addEventListener("open", () => {
+          ws.send(JSON.stringify({ type: "joinHost" }));
+        });
+
+        ws.onmessage = (ev) => {
+          let msg;
+          try {
+            msg = JSON.parse(ev.data);
+          } catch {
+            return;
+          }
+          if (msg.type === "error") showError(msg.message);
+
+          if (msg.type === "state") {
+            totalQ = msg.totalQuestions ?? totalQ;
+            if (msg.questionDurationSec != null) {
+              $("host-seconds").value = String(msg.questionDurationSec);
+            }
+            $("host-status").textContent =
+              (msg.totalQuestions || 0) + " questions loaded · " + (msg.roster?.length || 0) + " players";
+            const roster = msg.roster || [];
+            $("host-roster").textContent =
+              roster.length > 0 ? "Players: " + roster.join(", ") : "No players connected yet.";
+            $("hq-total").textContent = String(msg.totalQuestions ?? 0);
+
+            if (msg.phase === "lobby") {
+              clearInterval(timerId);
+              show("wait");
+            }
+            if (msg.phase === "question") {
+              /* detail from question event */
+            }
+            if (msg.phase === "reveal") {
+              /* reveal event paints results */
+            }
+            if (msg.phase === "ended") {
+              clearInterval(timerId);
+              show("ended");
+            }
+          }
+
+          if (msg.type === "question") {
+            clearInterval(timerId);
+            $("hq-num").textContent = String((msg.questionIndex ?? 0) + 1);
+            $("hq-prompt").textContent = msg.prompt;
+            const endsAt = msg.endsAt;
+            const tick = () => {
+              const left = Math.max(0, (endsAt - Date.now()) / 1000);
+              $("hq-timer").textContent = left.toFixed(1);
+            };
+            tick();
+            timerId = setInterval(tick, 100);
+            show("question");
+          }
+
+          if (msg.type === "reveal") {
+            clearInterval(timerId);
+            $("hreveal-correct").textContent = `Correct answer: ${msg.correctAnswer}`;
+            const ul = $("hreveal-results");
+            ul.innerHTML = "";
+            (msg.results || []).forEach((r) => {
+              const li = document.createElement("li");
+              const left = document.createElement("span");
+              left.textContent = r.name;
+              const right = document.createElement("span");
+              const badge = document.createElement("span");
+              badge.className = "badge";
+              if (r.choice == null) {
+                badge.classList.add("skip");
+                badge.textContent = "No answer";
+              } else {
+                badge.textContent = r.choice;
+                badge.classList.add(r.correct ? "ok" : "no");
+              }
+              right.appendChild(badge);
+              li.appendChild(left);
+              li.appendChild(right);
+              ul.appendChild(li);
+            });
+            show("reveal");
+          }
+
+          if (msg.type === "ended") {
+            clearInterval(timerId);
+            show("ended");
+          }
+        };
+
+        ws.onclose = () => setTimeout(connect, 1500);
+      }
+
+      $("btn-next").addEventListener("click", () => {
+        if (ws?.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "nextQuestion" }));
+        }
+      });
+
+      $("btn-reset").addEventListener("click", () => {
+        if (ws?.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "resetGame" }));
+        }
+      });
+
+      function sendDuration() {
+        if (ws?.readyState !== WebSocket.OPEN) return;
+        const sec = clampHostSeconds(Number($("host-seconds").value));
+        $("host-seconds").value = String(sec);
+        ws.send(JSON.stringify({ type: "setQuestionDuration", seconds: sec }));
+      }
+
+      function clampHostSeconds(n) {
+        if (!Number.isFinite(n)) return 10;
+        return Math.min(120, Math.max(5, Math.round(n)));
+      }
+
+      $("host-seconds").addEventListener("change", sendDuration);
+
+      function getPlayUrlForQr() {
+        return `${location.origin}/`;
+      }
+
+      function renderQr() {
+        const url = getPlayUrlForQr();
+        $("qr-url-text").textContent = url;
+        const canvas = $("qr-canvas");
+        if (typeof QRCode === "undefined") {
+          $("qr-url-text").textContent = url + " (loading QR…)";
+          return;
+        }
+        QRCode.toCanvas(
+          canvas,
+          url,
+          {
+            width: 220,
+            margin: 2,
+            color: { dark: "#1a0a2e", light: "#ffffff" },
+          },
+          (err) => {
+            if (err) console.error(err);
+          }
+        );
+      }
+
+      $("btn-copy-url").addEventListener("click", async () => {
+        const url = getPlayUrlForQr();
+        try {
+          await navigator.clipboard.writeText(url);
+          $("btn-copy-url").textContent = "Copied!";
+          setTimeout(() => {
+            $("btn-copy-url").textContent = "Copy player link";
+          }, 2000);
+        } catch {
+          showError("Could not copy — select the link and copy manually.");
+        }
+      });
+
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", renderQr);
+      } else {
+        renderQr();
+      }
+      window.addEventListener("load", renderQr);
+
+      connect();
+    </script>
+  </body>
+</html>

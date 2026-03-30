@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Play — Rule · Skill · Agent</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;600;700&family=Titan+One&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main>
+      <header class="game-header">
+        <h1>RULE · SKILL · AGENT</h1>
+        <p class="game-tagline">Live quiz game</p>
+      </header>
+      <p class="sub" id="player-sub">
+        Pick your player name, then tap <strong>Rule</strong>, <strong>Skill</strong>, or <strong>Agent</strong> — you get
+        <strong id="sec-display">10</strong> seconds per round!
+      </p>
+      <p class="sub" style="margin-top: -0.75rem; font-size: 0.88rem">
+        <strong>On your phone?</strong> Open the link the host shared or <strong>scan their QR code</strong> with your camera app.
+      </p>
+
+      <div id="error" class="error-toast hidden"></div>
+
+      <section id="screen-name" class="panel panel-glow">
+        <label for="name">Player name</label>
+        <input id="name" type="text" maxlength="64" placeholder="Enter your name…" autocomplete="name" />
+        <button type="button" class="btn-primary" id="btn-join">Enter the game</button>
+        <div id="name-actions" class="name-actions hidden">
+          <button type="button" class="btn-ghost" id="btn-cancel-name">Cancel</button>
+        </div>
+      </section>
+
+      <section id="screen-wait" class="panel hidden">
+        <p class="waiting">You’re in as <strong id="wait-name"></strong> — hang tight until the host starts the next round!</p>
+        <p class="roster" id="wait-roster"></p>
+        <button type="button" class="btn-link" id="btn-change-name">Change name</button>
+      </section>
+
+      <section id="screen-question" class="panel panel-glow hidden">
+        <p class="prompt" id="q-prompt"></p>
+        <div class="timer-wrap">
+          <div class="timer-label">Time left</div>
+          <div class="timer" id="q-timer">10.0</div>
+        </div>
+        <div class="choices" id="q-choices"></div>
+        <p id="q-locked" class="sub hidden">Locked in — waiting for the big reveal…</p>
+      </section>
+
+      <section id="screen-reveal" class="panel hidden">
+        <div class="correct-banner" id="reveal-correct"></div>
+        <p class="results-title">Scoreboard</p>
+        <ul class="results" id="reveal-results"></ul>
+      </section>
+
+      <section id="screen-ended" class="panel hidden">
+        <p class="waiting"><strong>Game over!</strong> Stick around — the host can fire up a new match.</p>
+        <p class="roster" id="ended-self" style="text-align: center; margin-top: 0.5rem"></p>
+        <button type="button" class="btn-link" id="btn-change-name-ended">Change name</button>
+      </section>
+    </main>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const screens = {
+        name: $("screen-name"),
+        wait: $("screen-wait"),
+        question: $("screen-question"),
+        reveal: $("screen-reveal"),
+        ended: $("screen-ended"),
+      };
+
+      let ws;
+      let myName = "";
+      let picked = null;
+      let timerId = null;
+      let editingName = false;
+      let clientPhase = "lobby";
+
+      function show(screen) {
+        Object.values(screens).forEach((el) => el.classList.add("hidden"));
+        screens[screen].classList.remove("hidden");
+      }
+
+      function showError(msg) {
+        const el = $("error");
+        el.textContent = msg;
+        el.classList.remove("hidden");
+        setTimeout(() => el.classList.add("hidden"), 5000);
+      }
+
+      function sendJoin() {
+        if (myName && ws?.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "join", name: myName }));
+        }
+      }
+
+      function exitRenameUi() {
+        editingName = false;
+        $("btn-join").textContent = "Enter the game";
+        $("name-actions").classList.add("hidden");
+      }
+
+      function connect() {
+        const proto = location.protocol === "https:" ? "wss" : "ws";
+        ws = new WebSocket(`${proto}://${location.host}`);
+
+        ws.addEventListener("open", sendJoin);
+
+        ws.onmessage = (ev) => {
+          let msg;
+          try {
+            msg = JSON.parse(ev.data);
+          } catch {
+            return;
+          }
+
+          if (msg.type === "error") showError(msg.message);
+          if (msg.type === "answerAck") {
+            picked = msg.choice;
+            document.querySelectorAll(".choice").forEach((b) => {
+              b.disabled = true;
+              if (b.dataset.choice === picked) b.classList.add("picked");
+            });
+            $("q-locked").classList.remove("hidden");
+          }
+          if (msg.type === "question" && myName) {
+            exitRenameUi();
+            clearInterval(timerId);
+            picked = null;
+            $("q-locked").classList.add("hidden");
+            $("q-prompt").textContent = msg.prompt;
+            const box = $("q-choices");
+            box.innerHTML = "";
+            msg.choices.forEach((c) => {
+              const btn = document.createElement("button");
+              btn.type = "button";
+              btn.className = "choice";
+              btn.dataset.choice = c;
+              btn.textContent = c;
+              btn.addEventListener("click", () => {
+                if (picked || btn.disabled) return;
+                ws.send(JSON.stringify({ type: "answer", choice: c }));
+              });
+              box.appendChild(btn);
+            });
+            const endsAt = msg.endsAt;
+            const tick = () => {
+              const left = Math.max(0, (endsAt - Date.now()) / 1000);
+              $("q-timer").textContent = left.toFixed(1);
+            };
+            tick();
+            timerId = setInterval(tick, 100);
+            show("question");
+          }
+          if (msg.type === "reveal" && myName) {
+            exitRenameUi();
+            clearInterval(timerId);
+            $("reveal-correct").textContent = `Correct answer: ${msg.correctAnswer}`;
+            const ul = $("reveal-results");
+            ul.innerHTML = "";
+            (msg.results || []).forEach((r) => {
+              const li = document.createElement("li");
+              if (r.name === myName) li.classList.add("me");
+              const left = document.createElement("span");
+              left.textContent = r.name;
+              const right = document.createElement("span");
+              const badge = document.createElement("span");
+              badge.className = "badge";
+              if (r.choice == null) {
+                badge.classList.add("skip");
+                badge.textContent = "No answer";
+              } else {
+                badge.textContent = r.choice;
+                badge.classList.add(r.correct ? "ok" : "no");
+              }
+              right.appendChild(badge);
+              li.appendChild(left);
+              li.appendChild(right);
+              ul.appendChild(li);
+            });
+            show("reveal");
+          }
+          if (msg.type === "ended" && myName) {
+            clearInterval(timerId);
+            $("ended-self").textContent = "You’re playing as " + myName;
+            if (!editingName) show("ended");
+          }
+          if (msg.type === "state") {
+            if (msg.phase) clientPhase = msg.phase;
+            if (msg.questionDurationSec != null) {
+              $("sec-display").textContent = String(msg.questionDurationSec);
+            }
+            if (!myName) return;
+            $("wait-name").textContent = myName;
+            $("ended-self").textContent = "You’re playing as " + myName;
+            const roster = msg.roster || [];
+            $("wait-roster").textContent =
+              roster.length > 0 ? "Players: " + roster.join(", ") : "No other players yet.";
+            if (msg.phase === "lobby" && !editingName) show("wait");
+            if (msg.phase === "ended" && !editingName) show("ended");
+            if (msg.phase === "question" && msg.question && msg.deadline && myName) {
+              if (picked) return;
+              exitRenameUi();
+              clearInterval(timerId);
+              picked = null;
+              $("q-locked").classList.add("hidden");
+              $("q-prompt").textContent = msg.question.prompt;
+              const box = $("q-choices");
+              box.innerHTML = "";
+              (msg.question.choices || ["Rule", "Skill", "Agent"]).forEach((c) => {
+                const btn = document.createElement("button");
+                btn.type = "button";
+                btn.className = "choice";
+                btn.dataset.choice = c;
+                btn.textContent = c;
+                btn.addEventListener("click", () => {
+                  if (picked || btn.disabled) return;
+                  ws.send(JSON.stringify({ type: "answer", choice: c }));
+                });
+                box.appendChild(btn);
+              });
+              const endsAt = msg.deadline;
+              const tick = () => {
+                const left = Math.max(0, (endsAt - Date.now()) / 1000);
+                $("q-timer").textContent = left.toFixed(1);
+              };
+              tick();
+              timerId = setInterval(tick, 100);
+              show("question");
+            }
+            if (msg.phase === "reveal" && msg.lastReveal) {
+              exitRenameUi();
+              clearInterval(timerId);
+              const r = msg.lastReveal;
+              $("reveal-correct").textContent = `Correct answer: ${r.correctAnswer}`;
+              const ul = $("reveal-results");
+              ul.innerHTML = "";
+              (r.results || []).forEach((row) => {
+                const li = document.createElement("li");
+                if (row.name === myName) li.classList.add("me");
+                const left = document.createElement("span");
+                left.textContent = row.name;
+                const right = document.createElement("span");
+                const badge = document.createElement("span");
+                badge.className = "badge";
+                if (row.choice == null) {
+                  badge.classList.add("skip");
+                  badge.textContent = "No answer";
+                } else {
+                  badge.textContent = row.choice;
+                  badge.classList.add(row.correct ? "ok" : "no");
+                }
+                right.appendChild(badge);
+                li.appendChild(left);
+                li.appendChild(right);
+                ul.appendChild(li);
+              });
+              show("reveal");
+            }
+          }
+        };
+
+        ws.onclose = () => {
+          setTimeout(connect, 1500);
+        };
+      }
+
+      function openRenameScreen() {
+        editingName = true;
+        $("name").value = myName;
+        $("btn-join").textContent = "Save name";
+        $("name-actions").classList.remove("hidden");
+        show("name");
+        requestAnimationFrame(() => {
+          $("name").focus();
+          $("name").select();
+        });
+      }
+
+      function closeRenameScreen() {
+        $("name").value = myName;
+        exitRenameUi();
+        if (clientPhase === "ended") show("ended");
+        else show("wait");
+      }
+
+      $("btn-change-name").addEventListener("click", openRenameScreen);
+      $("btn-change-name-ended").addEventListener("click", openRenameScreen);
+
+      $("btn-cancel-name").addEventListener("click", () => {
+        closeRenameScreen();
+      });
+
+      $("btn-join").addEventListener("click", () => {
+        const name = $("name").value.trim();
+        if (!name) {
+          showError("Please enter your name.");
+          return;
+        }
+        myName = name;
+        if (!ws || ws.readyState === WebSocket.CLOSED) connect();
+        sendJoin();
+        $("wait-name").textContent = myName;
+        $("ended-self").textContent = "You’re playing as " + myName;
+        exitRenameUi();
+        if (clientPhase === "ended") show("ended");
+        else show("wait");
+      });
+
+      $("name").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") $("btn-join").click();
+      });
+
+      connect();
+    </script>
+  </body>
+</html>

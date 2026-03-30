@@ -1,0 +1,9 @@
+# https://render.com — free Web Service (may sleep after idle; WebSockets supported)
+services:
+  - type: web
+    name: presentation-game
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
