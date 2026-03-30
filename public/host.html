@@ -18,32 +18,17 @@
         <h1>HOST CONTROL</h1>
         <p class="game-tagline">Run the show</p>
       </header>
-      <p class="sub">Players open the link below or <strong>scan the QR</strong> with their phone camera — you run the game from here.</p>
+      <p class="sub">
+        Open <strong>Settings</strong> and choose <strong>Player join QR</strong> to show the link and QR for phones — you run the game from here.
+      </p>
 
       <div id="error" class="error-toast hidden"></div>
-
-      <section class="panel panel-glow qr-panel" id="qr-section" aria-label="Player join QR code">
-        <p class="results-title" style="margin-bottom: 0.35rem">Player join QR</p>
-        <p class="timer-hint" style="text-align: center; margin-bottom: 0.65rem">
-          Show this on a projector; players scan with the <strong>camera app</strong> (no extra app needed).
-        </p>
-        <p class="deploy-banner">
-          Deploy on <strong>Render</strong> or <strong>Railway</strong> for a free public <code>https://</code> link — see
-          <code>DEPLOY.md</code> in the project. The QR always matches this page’s address.
-        </p>
-        <div class="qr-wrap">
-          <canvas id="qr-canvas" width="220" height="220" aria-hidden="true"></canvas>
-          <div class="qr-side">
-            <p class="qr-url" id="qr-url-text"></p>
-            <button type="button" class="btn-ghost" id="btn-copy-url">Copy player link</button>
-          </div>
-        </div>
-      </section>
 
       <div class="host-bar panel panel-glow" style="padding: 1rem 1.25rem; flex-direction: column; align-items: stretch">
         <div style="display: flex; flex-wrap: wrap; gap: 0.65rem; align-items: center">
           <button type="button" id="btn-next">Start / Next round</button>
           <button type="button" class="secondary" id="btn-reset">Reset lobby</button>
+          <button type="button" class="secondary" id="btn-settings">Settings</button>
           <span class="roster" id="host-status"></span>
         </div>
         <div class="host-timer-row">
@@ -51,6 +36,40 @@
           <input type="number" id="host-seconds" min="5" max="120" value="10" step="1" />
           <span class="timer-hint">Applies to the next question (5–120).</span>
         </div>
+      </div>
+
+      <div id="settings-panel" class="panel panel-glow settings-panel hidden" role="region" aria-label="Host settings">
+        <div class="settings-panel-head">
+          <span class="settings-title">Settings</span>
+          <button type="button" class="btn-close-settings" id="btn-close-settings" aria-label="Close settings">×</button>
+        </div>
+        <button
+          type="button"
+          class="settings-row"
+          id="btn-toggle-qr"
+          aria-expanded="false"
+          aria-controls="qr-section"
+        >
+          <span class="settings-row-label">Player join QR &amp; link</span>
+          <span class="settings-chevron" aria-hidden="true">▼</span>
+        </button>
+        <section class="settings-qr-block hidden" id="qr-section" aria-label="Player join QR code">
+          <p class="results-title" style="margin-bottom: 0.35rem; text-align: center">Player join QR</p>
+          <p class="timer-hint" style="text-align: center; margin-bottom: 0.65rem">
+            Show on a projector; players scan with the <strong>camera app</strong>.
+          </p>
+          <p class="deploy-banner">
+            Deploy on <strong>Render</strong> or <strong>Railway</strong> for a free public <code>https://</code> link — see
+            <code>DEPLOY.md</code> in the project. The QR matches this page’s address.
+          </p>
+          <div class="qr-wrap">
+            <canvas id="qr-canvas" width="220" height="220" aria-hidden="true"></canvas>
+            <div class="qr-side">
+              <p class="qr-url" id="qr-url-text"></p>
+              <button type="button" class="btn-ghost" id="btn-copy-url">Copy player link</button>
+            </div>
+          </div>
+        </section>
       </div>
 
       <section id="host-wait" class="panel">
@@ -211,6 +230,34 @@
         if (ws?.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: "resetGame" }));
         }
+      });
+
+      function setSettingsOpen(open) {
+        $("settings-panel").classList.toggle("hidden", !open);
+        if (!open) {
+          $("qr-section").classList.add("hidden");
+          $("btn-toggle-qr").setAttribute("aria-expanded", "false");
+          $("btn-toggle-qr").classList.remove("settings-row-open");
+        }
+      }
+
+      function setQrVisible(show) {
+        $("qr-section").classList.toggle("hidden", !show);
+        $("btn-toggle-qr").setAttribute("aria-expanded", String(show));
+        $("btn-toggle-qr").classList.toggle("settings-row-open", show);
+        if (show) renderQr();
+      }
+
+      $("btn-settings").addEventListener("click", () => {
+        const panel = $("settings-panel");
+        setSettingsOpen(panel.classList.contains("hidden"));
+      });
+
+      $("btn-close-settings").addEventListener("click", () => setSettingsOpen(false));
+
+      $("btn-toggle-qr").addEventListener("click", () => {
+        const hidden = $("qr-section").classList.contains("hidden");
+        setQrVisible(hidden);
       });
 
       function sendDuration() {
