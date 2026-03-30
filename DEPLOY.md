@@ -1,32 +1,68 @@
 # Host the game online (free)
 
-The QR code and player link use **this website’s address** (`https://your-app.onrender.com/`). Run the app on a free host so phones get a real public URL (no LAN or localhost).
+The QR code and player link use **this site’s public URL** (`https://your-app.example/`). Deploy this Node app anywhere below so phones can join.
 
-## Render (recommended)
+**This app needs:** Node, `npm start`, `PORT` from the host, and **WebSockets** (same URL for HTTP + WS). Avoid pure serverless hosts that only run short-lived functions.
+
+---
+
+## Alternatives to Render
+
+| Platform | Notes |
+|----------|--------|
+| **[Railway](https://railway.app)** | GitHub deploy; `npm start`; enable **public domain**. Uses monthly free credits. |
+| **[Fly.io](https://fly.io)** | `fly launch` from this folder; good for always-on small apps. Free allowance for low traffic. |
+| **[Koyeb](https://www.koyeb.com)** | GitHub → Web Service, **Node**, build `npm install`, run `npm start`. Free tier available. |
+| **[Glitch](https://glitch.com)** | Import repo or remix; good for demos; URL looks like `*.glitch.me`. |
+| **Render** | See below; free tier sleeps when idle. |
+
+---
+
+## Render
 
 1. Push this project to **GitHub**.
-2. Sign up at [render.com](https://render.com) and create a **New Web Service**.
-3. Connect the repo, pick the branch, and confirm:
-   - **Build command:** `npm install`
-   - **Start command:** `npm start`
-4. Use the **Free** instance type. Render sets `PORT` automatically; the app listens on `0.0.0.0`.
-5. After deploy, open `https://<your-service>.onrender.com/host.html` as **host** and share `https://<your-service>.onrender.com/` (or the QR) with players.
+2. [render.com](https://render.com) → **New Web Service** → connect repo.
+3. **Build:** `npm install` · **Start:** `npm start` · **Free** instance.
+4. Open `https://<service>.onrender.com/host.html` as host; players use the root URL or QR.
 
-Optional: add a `render.yaml` from this repo via **Blueprint** to pre-fill settings.
+Optional: **Blueprint** from `render.yaml` in this repo.
 
-**Note:** Free services **spin down** after idle. The first visitor after that may wait ~30–60s while it wakes up.
+**Note:** Free instances **sleep** after idle (~30–60s cold start on next visit).
+
+---
 
 ## Railway
 
-1. Push to GitHub, open [railway.app](https://railway.app), **New Project** → **Deploy from GitHub**.
-2. Railway detects Node and runs `npm start` (or use the included `Procfile`).
-3. Generate a **public domain** in the service settings and use that URL like above.
+1. [railway.app](https://railway.app) → **New Project** → **Deploy from GitHub**.
+2. Uses `npm start` (or `Procfile` in this repo).
+3. **Settings** → **Networking** → generate **Public Domain**.
+
+---
 
 ## Fly.io
 
-1. Install the Fly CLI, run `fly launch` in this folder, and follow prompts.
-2. Ensure the process binds to `0.0.0.0` and `PORT` (already the case).
+1. Install [Fly CLI](https://fly.io/docs/hands-on/install-flyctl/).
+2. Run `fly launch` in the project root (creates `fly.toml` if needed).
+3. Deploy with `fly deploy`. App must bind `0.0.0.0` and `PORT` (already configured).
+
+---
+
+## Koyeb
+
+1. Sign up at [koyeb.com](https://www.koyeb.com).
+2. **Create Web Service** → GitHub → this repo.
+3. **Build:** `npm install` · **Run:** `npm start` · **Port:** `8000` or whatever Koyeb sets in `PORT` (they usually inject `PORT`; this app reads `process.env.PORT`).
+
+---
+
+## Glitch
+
+1. Create a project on [glitch.com](https://glitch.com) and import from GitHub, or upload files.
+2. Set start script to `npm start` in `package.json` (already set).
+3. Share the Glitch **Show** URL; use `/host.html` for the host.
+
+---
 
 ## Custom questions
 
-Commit your `qustions.md` in the repo (or edit on the host and redeploy) so production uses your deck.
+Commit `qustions.md` in the repo (or redeploy after edits) so production uses your deck.

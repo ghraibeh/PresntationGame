@@ -66,6 +66,8 @@
       </section>
     </main>
 
+    <button type="button" class="sound-toggle" id="btn-sound" aria-label="Sound on" title="Sound effects">🔊</button>
+    <script src="/audio.js"></script>
     <script>
       const $ = (id) => document.getElementById(id);
       const screens = {
@@ -82,6 +84,49 @@
       let timerId = null;
       let editingName = false;
       let clientPhase = "lobby";
+
+      function syncSoundBtn() {
+        const btn = $("btn-sound");
+        if (!window.GameAudio) return;
+        const on = GameAudio.isOn();
+        btn.textContent = on ? "🔊" : "🔇";
+        btn.classList.toggle("muted", !on);
+        btn.setAttribute("aria-label", on ? "Sound on — tap to mute" : "Sound off — tap to unmute");
+      }
+
+      $("btn-sound").addEventListener("click", (e) => {
+        e.stopPropagation();
+        GameAudio.unlock();
+        GameAudio.setOn(!GameAudio.isOn());
+        syncSoundBtn();
+      });
+      window.addEventListener("pgsoundchange", syncSoundBtn);
+      syncSoundBtn();
+
+      function attachQuestionTimer(endsAt) {
+        clearInterval(timerId);
+        let prevCeil = Infinity;
+        let timeUpPlayed = false;
+        const tick = () => {
+          const left = Math.max(0, (endsAt - Date.now()) / 1000);
+          $("q-timer").textContent = left.toFixed(1);
+          if (left <= 0) {
+            if (!timeUpPlayed && window.GameAudio) {
+              GameAudio.playTimeUp();
+              timeUpPlayed = true;
+            }
+            prevCeil = Infinity;
+            return;
+          }
+          const ceil = Math.ceil(left);
+          if (ceil <= 3 && ceil < prevCeil && window.GameAudio) {
+            GameAudio.playTimerPing(ceil);
+          }
+          prevCeil = ceil;
+        };
+        tick();
+        timerId = setInterval(tick, 100);
+      }
 
       function show(screen) {
         Object.values(screens).forEach((el) => el.classList.add("hidden"));
@@ -123,6 +168,7 @@
 
           if (msg.type === "error") showError(msg.message);
           if (msg.type === "answerAck") {
+            if (window.GameAudio) GameAudio.playAnswerLock();
             picked = msg.choice;
             document.querySelectorAll(".choice").forEach((b) => {
               b.disabled = true;
@@ -132,7 +178,7 @@
           }
           if (msg.type === "question" && myName) {
             exitRenameUi();
-            clearInterval(timerId);
+            if (window.GameAudio) GameAudio.playQuestionStart();
             picked = null;
             $("q-locked").classList.add("hidden");
             $("q-prompt").textContent = msg.prompt;
@@ -146,22 +192,18 @@
               btn.textContent = c;
               btn.addEventListener("click", () => {
                 if (picked || btn.disabled) return;
+                if (window.GameAudio) GameAudio.playAnswerTap();
                 ws.send(JSON.stringify({ type: "answer", choice: c }));
               });
               box.appendChild(btn);
             });
-            const endsAt = msg.endsAt;
-            const tick = () => {
-              const left = Math.max(0, (endsAt - Date.now()) / 1000);
-              $("q-timer").textContent = left.toFixed(1);
-            };
-            tick();
-            timerId = setInterval(tick, 100);
+            attachQuestionTimer(msg.endsAt);
             show("question");
           }
           if (msg.type === "reveal" && myName) {
             exitRenameUi();
             clearInterval(timerId);
+            if (window.GameAudio) GameAudio.playReveal();
             $("reveal-correct").textContent = `Correct answer: ${msg.correctAnswer}`;
             const ul = $("reveal-results");
             ul.innerHTML = "";
@@ -208,7 +250,6 @@
             if (msg.phase === "question" && msg.question && msg.deadline && myName) {
               if (picked) return;
               exitRenameUi();
-              clearInterval(timerId);
               picked = null;
               $("q-locked").classList.add("hidden");
               $("q-prompt").textContent = msg.question.prompt;
@@ -222,17 +263,12 @@
                 btn.textContent = c;
                 btn.addEventListener("click", () => {
                   if (picked || btn.disabled) return;
+                  if (window.GameAudio) GameAudio.playAnswerTap();
                   ws.send(JSON.stringify({ type: "answer", choice: c }));
                 });
                 box.appendChild(btn);
               });
-              const endsAt = msg.deadline;
-              const tick = () => {
-                const left = Math.max(0, (endsAt - Date.now()) / 1000);
-                $("q-timer").textContent = left.toFixed(1);
-              };
-              tick();
-              timerId = setInterval(tick, 100);
+              attachQuestionTimer(msg.deadline);
               show("question");
             }
             if (msg.phase === "reveal" && msg.lastReveal) {

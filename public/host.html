@@ -59,8 +59,8 @@
             Show on a projector; players scan with the <strong>camera app</strong>.
           </p>
           <p class="deploy-banner">
-            Deploy on <strong>Render</strong> or <strong>Railway</strong> for a free public <code>https://</code> link — see
-            <code>DEPLOY.md</code> in the project. The QR matches this page’s address.
+            Need a public <code>https://</code> link? Try <strong>Railway</strong>, <strong>Fly.io</strong>, <strong>Koyeb</strong>,
+            <strong>Glitch</strong>, or <strong>Render</strong> — steps in <code>DEPLOY.md</code>. The QR matches this page’s address.
           </p>
           <div class="qr-wrap">
             <canvas id="qr-canvas" width="220" height="220" aria-hidden="true"></canvas>
@@ -99,12 +99,57 @@
       </section>
     </main>
 
+    <button type="button" class="sound-toggle" id="btn-sound" aria-label="Sound on" title="Sound effects">🔊</button>
+    <script src="/audio.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
     <script>
       const $ = (id) => document.getElementById(id);
       let ws;
       let timerId = null;
       let totalQ = 0;
+
+      function syncSoundBtn() {
+        const btn = $("btn-sound");
+        if (!window.GameAudio) return;
+        const on = GameAudio.isOn();
+        btn.textContent = on ? "🔊" : "🔇";
+        btn.classList.toggle("muted", !on);
+        btn.setAttribute("aria-label", on ? "Sound on — tap to mute" : "Sound off — tap to unmute");
+      }
+
+      $("btn-sound").addEventListener("click", (e) => {
+        e.stopPropagation();
+        GameAudio.unlock();
+        GameAudio.setOn(!GameAudio.isOn());
+        syncSoundBtn();
+      });
+      window.addEventListener("pgsoundchange", syncSoundBtn);
+      syncSoundBtn();
+
+      function attachHostQuestionTimer(endsAt) {
+        clearInterval(timerId);
+        let prevCeil = Infinity;
+        let timeUpPlayed = false;
+        const tick = () => {
+          const left = Math.max(0, (endsAt - Date.now()) / 1000);
+          $("hq-timer").textContent = left.toFixed(1);
+          if (left <= 0) {
+            if (!timeUpPlayed && window.GameAudio) {
+              GameAudio.playTimeUp();
+              timeUpPlayed = true;
+            }
+            prevCeil = Infinity;
+            return;
+          }
+          const ceil = Math.ceil(left);
+          if (ceil <= 3 && ceil < prevCeil && window.GameAudio) {
+            GameAudio.playTimerPing(ceil);
+          }
+          prevCeil = ceil;
+        };
+        tick();
+        timerId = setInterval(tick, 100);
+      }
 
       const views = {
         wait: $("host-wait"),
@@ -171,21 +216,16 @@
           }
 
           if (msg.type === "question") {
-            clearInterval(timerId);
+            if (window.GameAudio) GameAudio.playQuestionStart();
             $("hq-num").textContent = String((msg.questionIndex ?? 0) + 1);
             $("hq-prompt").textContent = msg.prompt;
-            const endsAt = msg.endsAt;
-            const tick = () => {
-              const left = Math.max(0, (endsAt - Date.now()) / 1000);
-              $("hq-timer").textContent = left.toFixed(1);
-            };
-            tick();
-            timerId = setInterval(tick, 100);
+            attachHostQuestionTimer(msg.endsAt);
             show("question");
           }
 
           if (msg.type === "reveal") {
             clearInterval(timerId);
+            if (window.GameAudio) GameAudio.playReveal();
             $("hreveal-correct").textContent = `Correct answer: ${msg.correctAnswer}`;
             const ul = $("hreveal-results");
             ul.innerHTML = "";

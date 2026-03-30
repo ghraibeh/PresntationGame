@@ -659,3 +659,31 @@ button:active:not(:disabled) {
 main.host-main {
   max-width: 48rem;
 }
+
+.sound-toggle {
+  position: fixed;
+  bottom: 1rem;
+  right: 1rem;
+  z-index: 100;
+  width: 3.1rem;
+  height: 3.1rem;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 1.35rem;
+  line-height: 1;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(0, 0, 0, 0.35));
+  border: 3px solid rgba(255, 255, 255, 0.35);
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sound-toggle:hover {
+  border-color: var(--cyan);
+}
+
+.sound-toggle.muted {
+  opacity: 0.65;
+}
