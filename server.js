@@ -6,7 +6,7 @@ import { fileURLToPath } from "url";
 import { loadQuestionsFromFile } from "./lib/parseQuestions.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const QUESTIONS_PATH = path.join(__dirname, "qustions.md");
+const QUESTIONS_PATH = process.env.QUESTIONS_FILE || path.join(__dirname, "qustions.md");
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
 const MIN_QUESTION_SEC = 5;
