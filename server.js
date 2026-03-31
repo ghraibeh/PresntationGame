@@ -29,7 +29,7 @@ try {
   console.error("Failed to load qustions.md:", e.message);
 }
 
-const participants = new Map(); // ws -> { name }
+const participants = new Map(); // ws -> { name, score }
 let hostWs = null;
 let questionIndex = -1;
 let phase = "lobby"; // lobby | question | reveal | ended
@@ -68,6 +68,21 @@ function rosterPayload() {
   return [...participants.values()].map((p) => p.name);
 }
 
+function standingsPayload() {
+  return [...participants.values()]
+    .map((p) => ({ name: p.name, score: p.score || 0 }))
+    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+}
+
+function winnersFromStandings(standings) {
+  if (!standings.length) return { winners: [], topScore: 0 };
+  const topScore = standings[0].score;
+  return {
+    winners: standings.filter((s) => s.score === topScore).map((s) => s.name),
+    topScore,
+  };
+}
+
 function clampQuestionSeconds(n) {
   const x = Math.round(Number(n));
   if (!Number.isFinite(x)) return questionDurationSec;
@@ -86,10 +101,12 @@ function buildStateForClient(ws) {
       deadline: 0,
       lastReveal: null,
       questionDurationSec,
+      standings: [],
       needsName: true,
     };
   }
 
+  const standings = standingsPayload();
   const base = {
     type: "state",
     phase,
@@ -100,7 +117,13 @@ function buildStateForClient(ws) {
     deadline,
     lastReveal,
     questionDurationSec,
+    standings,
   };
+  if (phase === "ended") {
+    const { winners, topScore } = winnersFromStandings(standings);
+    base.winners = winners;
+    base.topScore = topScore;
+  }
   if (phase === "question" && questionIndex >= 0 && questionIndex < questions.length) {
     const q = questions[questionIndex];
     base.question = {
@@ -128,10 +151,11 @@ function reveal() {
 
   const q = questions[questionIndex];
   const results = [];
-  for (const [sock, { name }] of participants) {
+  for (const [sock, player] of participants) {
     const choice = currentAnswers.get(sock) ?? null;
     const correct = choice === q.correctAnswer;
-    results.push({ name, choice, correct });
+    if (correct) player.score = (player.score || 0) + 1;
+    results.push({ name: player.name, choice, correct, score: player.score || 0 });
   }
 
   lastReveal = {
@@ -176,7 +200,15 @@ function endGame() {
   phase = "ended";
   deadline = 0;
   lastReveal = null;
-  broadcastToGameClients({ type: "ended", totalQuestions: questions.length });
+  const standings = standingsPayload();
+  const { winners, topScore } = winnersFromStandings(standings);
+  broadcastToGameClients({
+    type: "ended",
+    totalQuestions: questions.length,
+    standings,
+    winners,
+    topScore,
+  });
   broadcastState();
 }
 
@@ -209,7 +241,8 @@ wss.on("connection", (ws) => {
         return;
       }
       if (hostWs === ws) hostWs = null;
-      participants.set(ws, { name });
+      const prev = participants.get(ws);
+      participants.set(ws, { name, score: prev?.score || 0 });
       broadcastState();
       return;
     }

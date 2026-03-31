@@ -96,6 +96,9 @@
 
       <section id="host-ended" class="panel hidden">
         <p class="waiting">That’s every question! <strong>Start / Next round</strong> kicks off a fresh run from Q1.</p>
+        <div class="correct-banner" id="host-ended-winner" style="display: none"></div>
+        <p class="results-title" id="host-ended-standings-title" style="display: none">Final standings</p>
+        <ul class="results" id="host-ended-standings"></ul>
       </section>
     </main>
 
@@ -170,6 +173,44 @@
         setTimeout(() => el.classList.add("hidden"), 6000);
       }
 
+
+      function renderHostEndedResults(payload) {
+        const standings = payload?.standings || [];
+        const winners = payload?.winners || [];
+        const topScore = payload?.topScore || 0;
+        const winnerBox = $("host-ended-winner");
+        const title = $("host-ended-standings-title");
+        const ul = $("host-ended-standings");
+
+        ul.innerHTML = "";
+        if (!standings.length) {
+          winnerBox.style.display = "none";
+          title.style.display = "none";
+          return;
+        }
+
+        winnerBox.style.display = "block";
+        title.style.display = "block";
+        winnerBox.textContent =
+          winners.length <= 1
+            ? `Winner: ${winners[0]} (${topScore} pts)`
+            : `Tie winners: ${winners.join(", ")} (${topScore} pts)`;
+
+        standings.forEach((row, idx) => {
+          const li = document.createElement("li");
+          const left = document.createElement("span");
+          left.textContent = `${idx + 1}. ${row.name}`;
+          const right = document.createElement("span");
+          const badge = document.createElement("span");
+          badge.className = "badge ok";
+          badge.textContent = `${row.score} pts`;
+          right.appendChild(badge);
+          li.appendChild(left);
+          li.appendChild(right);
+          ul.appendChild(li);
+        });
+      }
+
       function connect() {
         const proto = location.protocol === "https:" ? "wss" : "ws";
         ws = new WebSocket(`${proto}://${location.host}`);
@@ -211,6 +252,7 @@
             }
             if (msg.phase === "ended") {
               clearInterval(timerId);
+              renderHostEndedResults(msg);
               show("ended");
             }
           }
@@ -253,6 +295,7 @@
 
           if (msg.type === "ended") {
             clearInterval(timerId);
+            renderHostEndedResults(msg);
             show("ended");
           }
         };

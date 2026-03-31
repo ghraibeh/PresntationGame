@@ -61,6 +61,9 @@
 
       <section id="screen-ended" class="panel hidden">
         <p class="waiting"><strong>Game over!</strong> Stick around — the host can fire up a new match.</p>
+        <div class="correct-banner" id="ended-winner" style="display: none"></div>
+        <p class="results-title" id="ended-standings-title" style="display: none">Final standings</p>
+        <ul class="results" id="ended-standings"></ul>
         <p class="roster" id="ended-self" style="text-align: center; margin-top: 0.5rem"></p>
         <button type="button" class="btn-link" id="btn-change-name-ended">Change name</button>
       </section>
@@ -126,6 +129,45 @@
         };
         tick();
         timerId = setInterval(tick, 100);
+      }
+
+
+      function renderEndedResults(payload) {
+        const standings = payload?.standings || [];
+        const winners = payload?.winners || [];
+        const topScore = payload?.topScore || 0;
+        const winnerBox = $("ended-winner");
+        const title = $("ended-standings-title");
+        const ul = $("ended-standings");
+
+        ul.innerHTML = "";
+        if (!standings.length) {
+          winnerBox.style.display = "none";
+          title.style.display = "none";
+          return;
+        }
+
+        winnerBox.style.display = "block";
+        title.style.display = "block";
+        winnerBox.textContent =
+          winners.length <= 1
+            ? `Winner: ${winners[0]} (${topScore} pts)`
+            : `Tie winners: ${winners.join(", ")} (${topScore} pts)`;
+
+        standings.forEach((row, idx) => {
+          const li = document.createElement("li");
+          if (row.name === myName) li.classList.add("me");
+          const left = document.createElement("span");
+          left.textContent = `${idx + 1}. ${row.name}`;
+          const right = document.createElement("span");
+          const badge = document.createElement("span");
+          badge.className = "badge ok";
+          badge.textContent = `${row.score} pts`;
+          right.appendChild(badge);
+          li.appendChild(left);
+          li.appendChild(right);
+          ul.appendChild(li);
+        });
       }
 
       function show(screen) {
@@ -232,6 +274,7 @@
           if (msg.type === "ended" && myName) {
             clearInterval(timerId);
             $("ended-self").textContent = "You’re playing as " + myName;
+            renderEndedResults(msg);
             if (!editingName) show("ended");
           }
           if (msg.type === "state") {
@@ -246,7 +289,10 @@
             $("wait-roster").textContent =
               roster.length > 0 ? "Players: " + roster.join(", ") : "No other players yet.";
             if (msg.phase === "lobby" && !editingName) show("wait");
-            if (msg.phase === "ended" && !editingName) show("ended");
+            if (msg.phase === "ended") {
+              renderEndedResults(msg);
+              if (!editingName) show("ended");
+            }
             if (msg.phase === "question" && msg.question && msg.deadline && myName) {
               if (picked) return;
               exitRenameUi();
